@@ -3,8 +3,6 @@ import { validateProductionEnv } from '@/lib/env';
 import { checkStockfishHealth } from '@/lib/stockfish/engine';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 
-export const runtime = 'nodejs';
-
 export async function GET(): Promise<NextResponse> {
   const env = validateProductionEnv();
   const stockfish = await checkStockfishHealth();

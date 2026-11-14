@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { SaveGameRequestSchema } from '@/lib/arena/schemas';
 import { listGames, saveVerifiedGame } from '@/lib/supabase/games';
 
-export const runtime = 'nodejs';
-
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const model = searchParams.get('model') || undefined;

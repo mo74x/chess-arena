@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getGameById } from '@/lib/supabase/games';
 
-export const runtime = 'nodejs';
-
 const UuidSchema = z.string().uuid();
 
 export async function GET(

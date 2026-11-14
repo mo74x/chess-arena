@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "benchmark": "tsx scripts/benchmark.ts",
+    "benchmark": "tsx --conditions=react-server scripts/benchmark.ts",
     "check:all": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

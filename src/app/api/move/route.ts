@@ -4,8 +4,6 @@ import { ArenaValidationError, resolveAiMove } from '@/lib/arena/resolve-move';
 import { MoveRequestSchema } from '@/lib/arena/schemas';
 import { getServerEnv } from '@/lib/env';
 
-export const runtime = 'nodejs';
-
 export async function POST(request: Request): Promise<NextResponse> {
   const env = getServerEnv();
   const ip = extractClientIp(request.headers);

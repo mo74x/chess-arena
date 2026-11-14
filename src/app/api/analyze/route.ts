@@ -5,8 +5,6 @@ import { replayPgn } from '@/lib/chess/engine';
 import { getServerEnv } from '@/lib/env';
 import { analyzeGame } from '@/lib/stockfish/engine';
 
-export const runtime = 'nodejs';
-
 export async function POST(request: Request): Promise<NextResponse> {
   const ip = extractClientIp(request.headers);
   const limit = checkRateLimit(`analyze:${ip}`, 5);

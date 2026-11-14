@@ -1,4 +1,6 @@
-export const ar = {
+import type { Dictionary } from './en';
+
+export const ar: Dictionary = {
   appName: 'ساحة الشطرنج',
   tagline: 'العب الشطرنج ضد كلود أو جيميناي أو GPT أو ستوكفيش مع فرض كامل لقوانين اللعبة.',
   nav: {
@@ -127,4 +129,4 @@ export const ar = {
     next: 'التالي',
     end: 'النهاية',
   },
-} as const;
+};

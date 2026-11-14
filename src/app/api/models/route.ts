@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getModelLeaderboard } from '@/lib/supabase/games';
 
-export const runtime = 'nodejs';
-
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get('mode') || undefined;
