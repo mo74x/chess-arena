@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# benchmark outputs
+scripts/benchmark-results*.json
+scripts/benchmark-summary*.md
+
+# design
+/docs
+
+.agents
