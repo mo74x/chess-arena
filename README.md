@@ -1,3 +1,5 @@
+![Chess Arena Banner](assets/banner.png)
+
 # Chess Arena (Human vs AI)
 
 Play chess against **Anthropic Claude**, **Google Gemini**, **OpenAI GPT** (including reasoning models), or a **Stockfish** engine baseline directly in the browser using your own API key (BYOK). `chess.js` enforces strict move legality on both client and server, illegal model replies are caught and retried, a pooled Node Stockfish engine evaluates positions and post-game accuracy, and a chained HMAC-SHA256 receipt protocol protects the `3 / 1 / 0` ranked scoreboard.
@@ -7,16 +9,16 @@ Play chess against **Anthropic Claude**, **Google Gemini**, **OpenAI GPT** (incl
 ## Visuals
 
 ### Arena Setup (Dark Mode, Handle, Avatars & BYOK)
-![Arena Setup](docs/screenshots/setup.png)
+![Arena Setup](assets/screenshots/setup.png)
 
 ### Active Match (Board, Eval Bar, Clocks, Opening & Move Log)
-![Active Game](docs/screenshots/game-en.png)
+![Active Game](assets/screenshots/game-en.png)
 
 ### Ranked Scoreboard & Model Comparison (`/models`)
-![Models & Scoreboard](docs/screenshots/models.png)
+![Models & Scoreboard](assets/screenshots/models.png)
 
 ### Match History (`/history`)
-![Match History](docs/screenshots/history.png)
+![Match History](assets/screenshots/history.png)
 
 ---
 
