@@ -8,6 +8,7 @@ import {
   sanitizeSanCandidate,
   uciToSan,
 } from '@/lib/chess/engine';
+import { detectOpening } from '@/lib/chess/openings';
 
 describe('chess engine wrapper', () => {
   it('handles castling, en passant, and promotion in replayPgn', () => {
@@ -89,5 +90,14 @@ describe('chess engine wrapper', () => {
     const captured = getCapturedPieces(chess);
     expect(captured.b).toEqual(['p']);
     expect(captured.w).toEqual([]);
+  });
+
+  it('detects longest matching ECO opening name', () => {
+    expect(detectOpening(['e4', 'c5'])).toEqual({ eco: 'B20', name: 'Sicilian Defense' });
+    expect(detectOpening(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6'])).toEqual({
+      eco: 'C70',
+      name: 'Ruy Lopez: Morphy Defense',
+    });
+    expect(detectOpening(['a3'])).toBeNull();
   });
 });

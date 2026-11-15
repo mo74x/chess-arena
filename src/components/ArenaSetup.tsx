@@ -12,12 +12,15 @@ import {
 } from '@/lib/providers/models.config';
 import { ByokKeyInput } from './ByokKeyInput';
 
+export type TimeControlOption = 'none' | 'blitz5' | 'rapid10' | 'rapid15';
+
 export interface MatchConfig {
   modelId: string;
   humanColor: 'w' | 'b';
   mode: GameMode;
   policy: IllegalMovePolicy;
   skillLevel: number;
+  timeControl: TimeControlOption;
   apiKey: string;
 }
 
@@ -162,6 +165,27 @@ export function ArenaSetup({ config, onChange, onStart, labels }: ArenaSetupProp
                 <span>{labels.modes[id].label}</span>
               </div>
               <p className="text-xs text-stone-600">{labels.modes[id].desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <span className="block text-sm font-medium text-stone-800">{labels.timeControl}</span>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(['none', 'blitz5', 'rapid10', 'rapid15'] as const).map((tc) => (
+            <button
+              key={tc}
+              type="button"
+              onClick={() => onChange({ ...config, timeControl: tc })}
+              data-testid={`time-control-${tc}`}
+              className={`rounded-lg border px-3 py-2 text-xs font-medium sm:text-sm ${
+                config.timeControl === tc
+                  ? 'border-teal-700 bg-teal-50 text-teal-900'
+                  : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'
+              }`}
+            >
+              {labels.timeControls[tc]}
             </button>
           ))}
         </div>

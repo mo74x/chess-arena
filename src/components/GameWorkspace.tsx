@@ -8,9 +8,12 @@ import {
   Eye,
   EyeOff,
   Flag,
+  Handshake,
   Loader2,
   PlusCircle,
   Undo2,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -20,10 +23,12 @@ import {
   getCapturedPieces,
   getGameStatus,
 } from '@/lib/chess/engine';
+import { detectOpening } from '@/lib/chess/openings';
+import { playChessSound } from '@/lib/chess/sound';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { ARENA_MODELS, ENGINE_SKILL_DEFAULT } from '@/lib/providers/models.config';
-import { ArenaSetup, type MatchConfig } from './ArenaSetup';
-import { ChessBoardView } from './ChessBoardView';
+import { ArenaSetup, type MatchConfig, type TimeControlOption } from './ArenaSetup';
+import { type BoardTheme, ChessBoardView } from './ChessBoardView';
 import { EvalBar } from './EvalBar';
 import { type AnalysisSummary, GameOverDialog } from './GameOverDialog';
 import { LanguageToggle } from './LanguageToggle';
@@ -36,6 +41,26 @@ const PIECE_GLYPHS: Record<string, string> = {
   n: 'N',
   p: 'P',
 };
+
+function getClockConfig(tc: TimeControlOption): { baseMs: number; incMs: number } | null {
+  switch (tc) {
+    case 'blitz5':
+      return { baseMs: 5 * 60_000, incMs: 0 };
+    case 'rapid10':
+      return { baseMs: 10 * 60_000, incMs: 0 };
+    case 'rapid15':
+      return { baseMs: 15 * 60_000, incMs: 10_000 };
+    default:
+      return null;
+  }
+}
+
+function formatClock(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
 export function GameWorkspace() {
   const [locale, setLocale] = useState<Locale>('en');
@@ -52,6 +77,7 @@ export function GameWorkspace() {
     mode: 'pure',
     policy: 'strict',
     skillLevel: ENGINE_SKILL_DEFAULT,
+    timeControl: 'none',
     apiKey: '',
   });
 
@@ -63,6 +89,11 @@ export function GameWorkspace() {
   const [thinking, setThinking] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showComments, setShowComments] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [boardTheme, setBoardTheme] = useState<BoardTheme>('classic');
+  const [drawNotice, setDrawNotice] = useState<string | null>(null);
+  const [whiteMs, setWhiteMs] = useState<number | null>(null);
+  const [blackMs, setBlackMs] = useState<number | null>(null);
   const [evalState, setEvalState] = useState<{ evalCp?: number; mate?: number }>({});
   const [copiedPgn, setCopiedPgn] = useState(false);
 
@@ -72,6 +103,8 @@ export function GameWorkspace() {
     termination: GameTermination | null;
     resignedBy?: 'w' | 'b';
     forfeitedBy?: 'w' | 'b';
+    timedOutBy?: 'w' | 'b';
+    drawAgreed?: boolean;
   }>({ over: false, result: '*', termination: null });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisSummary | null>(null);
@@ -115,6 +148,61 @@ export function GameWorkspace() {
     const modelMoves = [...moves].reverse().find((m) => m.by === 'model' && m.comment);
     return modelMoves?.comment ?? null;
   }, [moves]);
+
+  const opening = useMemo(
+    () => detectOpening(moves.map((m) => m.san)),
+    [moves],
+  );
+
+  useEffect(() => {
+    if (phase !== 'playing' || gameOverState.over || config.timeControl === 'none') {
+      return;
+    }
+
+    const activeColor = chessInstance.turn();
+    let lastTick = Date.now();
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const delta = now - lastTick;
+      lastTick = now;
+
+      if (activeColor === 'w') {
+        setWhiteMs((prev) => {
+          if (prev === null) return null;
+          const next = Math.max(0, prev - delta);
+          if (next === 0) {
+            setGameOverState({
+              over: true,
+              result: '0-1',
+              termination: 'timeout',
+              timedOutBy: 'w',
+            });
+            setDialogOpen(true);
+            playChessSound('gameover', soundEnabled);
+          }
+          return next;
+        });
+      } else {
+        setBlackMs((prev) => {
+          if (prev === null) return null;
+          const next = Math.max(0, prev - delta);
+          if (next === 0) {
+            setGameOverState({
+              over: true,
+              result: '1-0',
+              termination: 'timeout',
+              timedOutBy: 'b',
+            });
+            setDialogOpen(true);
+            playChessSound('gameover', soundEnabled);
+          }
+          return next;
+        });
+      }
+    }, 100);
+
+    return () => clearInterval(timer);
+  }, [chessInstance, config.timeControl, gameOverState.over, phase, soundEnabled]);
 
   const requestAiTurn = useCallback(
     async (currentPgn: string, currentMoves: MoveLogEntry[]) => {
@@ -160,6 +248,23 @@ export function GameWorkspace() {
           const applied = replay.move(data.san);
           if (applied) {
             setLastMoveSquares({ from: applied.from, to: applied.to });
+            if (replay.inCheck()) {
+              playChessSound('check', soundEnabled);
+            } else if (applied.captured) {
+              playChessSound('capture', soundEnabled);
+            } else {
+              playChessSound('move', soundEnabled);
+            }
+          }
+
+          const clockCfg = getClockConfig(config.timeControl);
+          if (clockCfg && clockCfg.incMs > 0) {
+            const aiColor = config.humanColor === 'w' ? 'b' : 'w';
+            if (aiColor === 'w') {
+              setWhiteMs((prev) => (prev !== null ? prev + clockCfg.incMs : null));
+            } else {
+              setBlackMs((prev) => (prev !== null ? prev + clockCfg.incMs : null));
+            }
           }
 
           const entry: MoveLogEntry = {
@@ -192,6 +297,7 @@ export function GameWorkspace() {
             forfeitedBy,
           });
           setDialogOpen(true);
+          playChessSound('gameover', soundEnabled);
         }
       } catch {
         setErrorBanner(dict.game.modelUnavailable);
@@ -200,7 +306,7 @@ export function GameWorkspace() {
         setThinking(false);
       }
     },
-    [config, dict.game.modelUnavailable],
+    [config, dict.game.modelUnavailable, soundEnabled],
   );
 
   const startNewGame = useCallback(() => {
@@ -216,12 +322,16 @@ export function GameWorkspace() {
     setAnalysis(null);
     setSavedInfo(null);
     setTotalTokens(0);
+    setDrawNotice(null);
+    const clockCfg = getClockConfig(config.timeControl);
+    setWhiteMs(clockCfg ? clockCfg.baseMs : null);
+    setBlackMs(clockCfg ? clockCfg.baseMs : null);
     setPhase('playing');
 
     if (config.humanColor === 'b') {
       void requestAiTurn('', []);
     }
-  }, [config.humanColor, requestAiTurn]);
+  }, [config.humanColor, config.timeControl, requestAiTurn]);
 
   const handleHumanMove = (move: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n' }) => {
     if (thinking || gameOverState.over) return;
@@ -246,9 +356,20 @@ export function GameWorkspace() {
     setPgn(nextPgn);
     setMoves(nextMoves);
     setLastMoveSquares({ from: applied.from, to: applied.to });
+    setDrawNotice(null);
+
+    const clockCfg = getClockConfig(config.timeControl);
+    if (clockCfg && clockCfg.incMs > 0) {
+      if (config.humanColor === 'w') {
+        setWhiteMs((prev) => (prev !== null ? prev + clockCfg.incMs : null));
+      } else {
+        setBlackMs((prev) => (prev !== null ? prev + clockCfg.incMs : null));
+      }
+    }
 
     const status = getGameStatus(replay);
     if (status.isGameOver) {
+      playChessSound('gameover', soundEnabled);
       setGameOverState({
         over: true,
         result: status.result,
@@ -258,7 +379,35 @@ export function GameWorkspace() {
       return;
     }
 
+    if (replay.inCheck()) {
+      playChessSound('check', soundEnabled);
+    } else if (applied.captured) {
+      playChessSound('capture', soundEnabled);
+    } else {
+      playChessSound('move', soundEnabled);
+    }
+
     void requestAiTurn(nextPgn, nextMoves);
+  };
+
+  const handleOfferDraw = () => {
+    if (thinking || gameOverState.over) return;
+    // Accept draw after move 10 when position is balanced or human is ahead
+    const cpFromWhite = evalState.evalCp ?? 0;
+    const cpForHuman = config.humanColor === 'w' ? cpFromWhite : -cpFromWhite;
+    const canAccept = moves.length >= 20 && cpForHuman >= -50;
+    if (canAccept) {
+      playChessSound('gameover', soundEnabled);
+      setGameOverState({
+        over: true,
+        result: '1/2-1/2',
+        termination: 'draw_agreement',
+        drawAgreed: true,
+      });
+      setDialogOpen(true);
+    } else {
+      setDrawNotice(dict.game.drawDeclined);
+    }
   };
 
   const handleResign = () => {
@@ -341,6 +490,8 @@ export function GameWorkspace() {
           humanColor: config.humanColor,
           resignedBy: gameOverState.resignedBy,
           forfeitedBy: gameOverState.forfeitedBy,
+          timedOutBy: gameOverState.timedOutBy,
+          drawAgreed: gameOverState.drawAgreed,
           illegalAttempts: totalIllegalAttempts,
           fallbackMoves: totalFallbackMoves,
           totalTokens,
@@ -429,6 +580,14 @@ export function GameWorkspace() {
                         {dict.game.thinking}
                       </span>
                     ) : null}
+                    {config.timeControl !== 'none' ? (
+                      <span
+                        data-testid="ai-clock"
+                        className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-stone-800"
+                      >
+                        {formatClock((config.humanColor === 'w' ? blackMs : whiteMs) ?? 0)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -437,17 +596,38 @@ export function GameWorkspace() {
                   orientation={config.humanColor === 'w' ? 'white' : 'black'}
                   interactive={isHumanTurn}
                   lastMove={lastMoveSquares}
+                  theme={boardTheme}
                   onPlayerMove={handleHumanMove}
                   labels={dict.promotion}
                 />
 
                 <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs">
-                  <span className="font-semibold text-stone-900">{dict.game.you}</span>
-                  <span className="font-mono text-stone-500">
-                    {(config.humanColor === 'w' ? captured.w : captured.b)
-                      .map((p) => PIECE_GLYPHS[p])
-                      .join(' ')}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-stone-900">{dict.game.you}</span>
+                    {opening ? (
+                      <span
+                        data-testid="opening-badge"
+                        className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600"
+                      >
+                        {opening.eco} · {opening.name}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-stone-500">
+                      {(config.humanColor === 'w' ? captured.w : captured.b)
+                        .map((p) => PIECE_GLYPHS[p])
+                        .join(' ')}
+                    </span>
+                    {config.timeControl !== 'none' ? (
+                      <span
+                        data-testid="human-clock"
+                        className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-stone-800"
+                      >
+                        {formatClock((config.humanColor === 'w' ? whiteMs : blackMs) ?? 0)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
@@ -460,6 +640,15 @@ export function GameWorkspace() {
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>{errorBanner}</span>
+                </div>
+              ) : null}
+
+              {drawNotice ? (
+                <div
+                  data-testid="draw-notice"
+                  className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"
+                >
+                  {drawNotice}
                 </div>
               ) : null}
 
@@ -483,6 +672,38 @@ export function GameWorkspace() {
                   <Flag className="h-3.5 w-3.5" />
                   <span>{dict.game.resign}</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={handleOfferDraw}
+                  disabled={thinking || gameOverState.over}
+                  data-testid="offer-draw-btn"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+                >
+                  <Handshake className="h-3.5 w-3.5" />
+                  <span>{dict.game.offerDraw}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSoundEnabled((prev) => !prev)}
+                  data-testid="sound-toggle-btn"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50"
+                >
+                  {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                  <span>{soundEnabled ? dict.game.soundOn : dict.game.soundOff}</span>
+                </button>
+                <select
+                  aria-label={dict.game.boardTheme}
+                  value={boardTheme}
+                  onChange={(e) => setBoardTheme(e.target.value as BoardTheme)}
+                  data-testid="board-theme-select"
+                  className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-800"
+                >
+                  {(['classic', 'slate', 'walnut'] as const).map((themeKey) => (
+                    <option key={themeKey} value={themeKey}>
+                      {dict.game.boardTheme}: {dict.game.themes[themeKey]}
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={handleTakeback}

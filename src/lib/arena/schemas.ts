@@ -43,6 +43,8 @@ export const SaveGameRequestSchema = z.object({
   humanColor: PlayerColorSchema,
   resignedBy: PlayerColorSchema.optional(),
   forfeitedBy: PlayerColorSchema.optional(),
+  timedOutBy: PlayerColorSchema.optional(),
+  drawAgreed: z.boolean().optional(),
   illegalAttempts: z.number().int().min(0).default(0),
   fallbackMoves: z.number().int().min(0).default(0),
   totalTokens: z.number().int().min(0).default(0),

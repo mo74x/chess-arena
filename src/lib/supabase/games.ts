@@ -69,6 +69,15 @@ export function deriveAuthoritativeOutcome(input: SaveGameRequestInput): {
     return { pgn: replayed.pgn, result, termination: 'forfeit' };
   }
 
+  if (input.timedOutBy) {
+    const result: GameResult = input.timedOutBy === 'w' ? '0-1' : '1-0';
+    return { pgn: replayed.pgn, result, termination: 'timeout' };
+  }
+
+  if (input.drawAgreed) {
+    return { pgn: replayed.pgn, result: '1/2-1/2', termination: 'draw_agreement' };
+  }
+
   throw new Error('Cannot save an unfinished game without resignation or forfeit.');
 }
 

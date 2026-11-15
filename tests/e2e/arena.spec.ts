@@ -63,4 +63,29 @@ test.describe('Chess Arena E2E', () => {
 
     await expect(page.getByTestId('chessboard-container')).toHaveAttribute('dir', 'ltr');
   });
+
+  test('supports time controls, board themes, sound toggle, draw offer, and captures screenshots', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await page.goto('/');
+    await page.getByTestId('model-card-mock-legal').click();
+    await page.getByTestId('time-control-blitz5').click();
+    await page.screenshot({ path: 'docs/screenshots/setup.png', fullPage: true });
+
+    await page.getByTestId('start-match-btn').click();
+    await expect(page.getByTestId('human-clock')).toBeVisible();
+    await expect(page.getByTestId('ai-clock')).toBeVisible();
+
+    await page.locator('[data-square="e2"]').click();
+    await page.locator('[data-square="e4"]').click();
+    await expect(page.locator('button', { hasText: 'e4' })).toBeVisible();
+
+    await page.getByTestId('board-theme-select').selectOption('walnut');
+    await page.getByTestId('sound-toggle-btn').click();
+    await page.getByTestId('offer-draw-btn').click();
+    await expect(page.getByTestId('draw-notice')).toBeVisible();
+
+    await page.screenshot({ path: 'docs/screenshots/game-en.png', fullPage: true });
+  });
 });

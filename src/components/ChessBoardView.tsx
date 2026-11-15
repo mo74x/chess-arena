@@ -5,11 +5,20 @@ import { useMemo, useState, useSyncExternalStore } from 'react';
 import { Chessboard } from 'react-chessboard';
 import type { Dictionary } from '@/lib/i18n/en';
 
+export type BoardTheme = 'classic' | 'slate' | 'walnut';
+
+const BOARD_THEMES: Record<BoardTheme, { light: string; dark: string }> = {
+  classic: { light: '#eeeed2', dark: '#769656' },
+  slate: { light: '#e2e8f0', dark: '#64748b' },
+  walnut: { light: '#f0d9b5', dark: '#b58863' },
+};
+
 export interface ChessBoardViewProps {
   fen: string;
   orientation: 'white' | 'black';
   interactive: boolean;
   lastMove?: { from: string; to: string } | null;
+  theme?: BoardTheme;
   onPlayerMove: (move: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n' }) => void;
   labels: Dictionary['promotion'];
 }
@@ -21,6 +30,7 @@ export function ChessBoardView({
   orientation,
   interactive,
   lastMove,
+  theme = 'classic',
   onPlayerMove,
   labels,
 }: ChessBoardViewProps) {
@@ -136,8 +146,8 @@ export function ChessBoardView({
           allowDragging: interactive,
           showNotation: true,
           squareStyles,
-          darkSquareStyle: { backgroundColor: '#769656' },
-          lightSquareStyle: { backgroundColor: '#eeeed2' },
+          darkSquareStyle: { backgroundColor: BOARD_THEMES[theme].dark },
+          lightSquareStyle: { backgroundColor: BOARD_THEMES[theme].light },
           canDragPiece: ({ piece }) => {
             if (!interactive) return false;
             const turnPrefix = chess.turn();

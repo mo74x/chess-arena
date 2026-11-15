@@ -10,6 +10,8 @@ export type GameTermination =
   | 'fifty_move_rule'
   | 'resign'
   | 'forfeit'
+  | 'draw_agreement'
+  | 'timeout'
   | 'move_limit';
 
 export type GameResult = '1-0' | '0-1' | '1/2-1/2' | '*';

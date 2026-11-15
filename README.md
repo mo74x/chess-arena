@@ -20,6 +20,18 @@ Play chess against Anthropic Claude, Google Gemini, OpenAI GPT, or a Stockfish e
 - In `NODE_ENV=production`, non-mock LLM calls without `x-api-key` are rejected with HTTP `401`.
 - Deterministic `mock-*` bots (`mock-legal`, `mock-illegal-once`, `mock-always-illegal`) work with zero API keys for local development and automated tests.
 
+## Features
+
+- **Interactive Board & Themes:** Click/drag moves, legal-move highlights, promotion dialog, check/last-move highlights, and selectable board themes (`Classic`, `Slate`, `Walnut`).
+- **Clocks & Draw Offers:** Optional time controls (`Unlimited`, `5+0 Blitz`, `10+0 Rapid`, `15+10 Rapid`) with increment and timeout handling, plus draw offers.
+- **Opening Names & Audio:** Automatic ECO opening detection and subtle synthesized Web Audio sound effects with a mute toggle.
+- **Bilingual UI (EN / AR):** Full English (LTR) and Arabic (RTL) interface while keeping the chessboard strictly `dir="ltr"`.
+
+## Screenshots
+
+![Arena Setup](docs/screenshots/setup.png)
+![Active Game](docs/screenshots/game-en.png)
+
 ## Setup
 
 1. Install dependencies:
@@ -52,6 +64,6 @@ ANTHROPIC_API_KEY=... GEMINI_API_KEY=... OPENAI_API_KEY=... npm run benchmark --
 
 ## Known Limitations
 
-- **Hosting:** Server-side Node Stockfish requires a persistent Node.js runtime (`runtime = 'nodejs'`) rather than stateless edge functions.
+- **Hosting:** Server-side Node Stockfish requires a persistent Node.js runtime rather than stateless edge functions.
 - **Rate Limiting:** The built-in sliding-window rate limiter (`20/min` on `/api/move`, `5/min` on `/api/analyze`) is in-memory per instance.
 - **Unauthenticated Persistence:** Anonymous games are saved and read through Next.js server routes using `SUPABASE_SERVICE_ROLE_KEY`; direct `anon` table access is denied by RLS.
