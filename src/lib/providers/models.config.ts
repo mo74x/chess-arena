@@ -19,7 +19,20 @@ export interface ArenaModelSpec {
   temperature: number;
   isMock?: boolean;
   isEngine?: boolean;
+  isCustom?: boolean;
 }
+
+export const CUSTOM_MODEL_ID_REGEX = /^[a-zA-Z0-9._:/-]{2,80}$/;
+
+export const BYOK_PROVIDERS: ReadonlyArray<{
+  id: Extract<ProviderId, 'anthropic' | 'google' | 'openai'>;
+  label: string;
+  placeholderModel: string;
+}> = [
+  { id: 'anthropic', label: 'Anthropic Claude', placeholderModel: 'claude-sonnet-4-5-20250929' },
+  { id: 'google', label: 'Google Gemini', placeholderModel: 'gemini-2.5-flash' },
+  { id: 'openai', label: 'OpenAI GPT', placeholderModel: 'gpt-4o-mini' },
+];
 
 /**
  * NOTE: Providers periodically update model snapshots.
@@ -115,4 +128,65 @@ export const ARENA_MODELS: readonly ArenaModelSpec[] = [
 
 export function getModelSpecById(modelId: string): ArenaModelSpec | undefined {
   return ARENA_MODELS.find((m) => m.id === modelId);
+}
+
+/**
+ * Resolves either a curated preset model ID or a user-supplied custom model ID
+ * for an explicit LLM provider (`anthropic` | `google` | `openai`).
+ */
+export function resolveModelSpec(
+  modelId: string,
+  provider?: ProviderId,
+): ArenaModelSpec | undefined {
+  const preset = getModelSpecById(modelId);
+  if (preset) {
+    if (provider && preset.provider !== provider) {
+      return undefined;
+    }
+    return preset;
+  }
+
+  // Also support canonical "provider:apiModelId" strings
+  let resolvedProvider = provider;
+  let apiModelId = modelId.trim();
+  const colonIdx = apiModelId.indexOf(':');
+  if (!resolvedProvider && colonIdx > 0) {
+    const prefix = apiModelId.slice(0, colonIdx) as ProviderId;
+    if (prefix === 'anthropic' || prefix === 'google' || prefix === 'openai') {
+      resolvedProvider = prefix;
+      apiModelId = apiModelId.slice(colonIdx + 1);
+    }
+  }
+
+  if (
+    resolvedProvider !== 'anthropic' &&
+    resolvedProvider !== 'google' &&
+    resolvedProvider !== 'openai'
+  ) {
+    return undefined;
+  }
+
+  if (!CUSTOM_MODEL_ID_REGEX.test(apiModelId)) {
+    return undefined;
+  }
+
+  return {
+    id: `${resolvedProvider}:${apiModelId}`,
+    provider: resolvedProvider,
+    displayName: apiModelId,
+    badge: `Custom · ${resolvedProvider}`,
+    description: 'User-selected custom model via BYOK.',
+    apiModelId,
+    maxOutputTokens: 450,
+    temperature: 0.2,
+    isCustom: true,
+  };
+}
+
+export function isRankedEligibleModel(modelId: string): boolean {
+  const trimmed = modelId.trim().toLowerCase();
+  if (!trimmed || trimmed === 'stockfish' || trimmed.startsWith('mock-')) {
+    return false;
+  }
+  return true;
 }

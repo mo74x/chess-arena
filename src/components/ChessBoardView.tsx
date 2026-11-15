@@ -179,8 +179,8 @@ export function ChessBoardView({
           role="dialog"
           aria-label={labels.title}
         >
-          <div className="w-full max-w-xs rounded-lg border border-stone-300 bg-white p-4 shadow-lg">
-            <p className="mb-3 text-sm font-semibold text-stone-900">{labels.title}</p>
+          <div className="w-full max-w-xs rounded-lg border border-stone-300 bg-white p-4 shadow-lg dark:border-stone-700 dark:bg-stone-900">
+            <p className="mb-3 text-sm font-semibold text-stone-900 dark:text-stone-100">{labels.title}</p>
             <div className="grid grid-cols-2 gap-2">
               {(['q', 'r', 'b', 'n'] as const).map((piece) => (
                 <button
@@ -191,7 +191,7 @@ export function ChessBoardView({
                     setPendingPromotion(null);
                     onPlayerMove({ from: pending.from, to: pending.to, promotion: piece });
                   }}
-                  className="rounded-md border border-stone-300 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-900 hover:bg-stone-100"
+                  className="rounded-md border border-stone-300 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-900 hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700"
                 >
                   {labels[piece]}
                 </button>

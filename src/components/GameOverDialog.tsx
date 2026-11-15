@@ -62,12 +62,12 @@ export function GameOverDialog({
       aria-modal="true"
       data-testid="game-over-dialog"
     >
-      <div className="w-full max-w-md rounded-xl border border-stone-200 bg-white p-5 shadow-xl">
-        <div className="mb-4 flex items-start justify-between border-b border-stone-200 pb-3">
+      <div className="w-full max-w-md rounded-xl border border-stone-200 bg-white p-5 shadow-xl dark:border-stone-800 dark:bg-stone-900">
+        <div className="mb-4 flex items-start justify-between border-b border-stone-200 pb-3 dark:border-stone-800">
           <div>
-            <h2 className="text-lg font-semibold text-stone-900">{labels.title}</h2>
-            <p className="text-sm text-stone-600">
-              <span className="font-mono font-semibold text-stone-900">{result}</span>
+            <h2 className="text-lg font-semibold text-stone-900 dark:text-stone-100">{labels.title}</h2>
+            <p className="text-sm text-stone-600 dark:text-stone-400">
+              <span className="font-mono font-semibold text-stone-900 dark:text-stone-100">{result}</span>
               {terminationText ? ` · ${terminationText}` : ''}
             </p>
           </div>
@@ -75,44 +75,44 @@ export function GameOverDialog({
             type="button"
             onClick={onClose}
             aria-label={labels.close}
-            className="rounded p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+            className="rounded p-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-200"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-lg bg-stone-50 p-2.5">
-            <div className="text-[11px] text-stone-500">{labels.illegalAttempts}</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-stone-900">
+          <div className="rounded-lg bg-stone-50 p-2.5 dark:bg-stone-800/70">
+            <div className="text-[11px] text-stone-500 dark:text-stone-400">{labels.illegalAttempts}</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-stone-900 dark:text-stone-100">
               {illegalAttempts}
             </div>
           </div>
-          <div className="rounded-lg bg-stone-50 p-2.5">
-            <div className="text-[11px] text-stone-500">{labels.fallbackMoves}</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-stone-900">
+          <div className="rounded-lg bg-stone-50 p-2.5 dark:bg-stone-800/70">
+            <div className="text-[11px] text-stone-500 dark:text-stone-400">{labels.fallbackMoves}</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-stone-900 dark:text-stone-100">
               {fallbackMoves}
             </div>
           </div>
-          <div className="rounded-lg bg-stone-50 p-2.5">
-            <div className="text-[11px] text-stone-500">{labels.avgMoveTime}</div>
-            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-stone-900">
+          <div className="rounded-lg bg-stone-50 p-2.5 dark:bg-stone-800/70">
+            <div className="text-[11px] text-stone-500 dark:text-stone-400">{labels.avgMoveTime}</div>
+            <div className="mt-0.5 font-mono text-base font-semibold tabular-nums text-stone-900 dark:text-stone-100">
               {avgMoveTimeMs}ms
             </div>
           </div>
         </div>
 
         {analysis ? (
-          <div className="mb-4 grid grid-cols-2 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs">
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs dark:border-stone-800 dark:bg-stone-800/70">
             <div>
-              <div className="text-stone-500">{gameLabels.whiteAccuracy}</div>
-              <div className="font-mono text-sm font-semibold tabular-nums text-stone-900">
+              <div className="text-stone-500 dark:text-stone-400">{gameLabels.whiteAccuracy}</div>
+              <div className="font-mono text-sm font-semibold tabular-nums text-stone-900 dark:text-stone-100">
                 {analysis.white.accuracy}% ({gameLabels.acpl}: {analysis.white.acpl})
               </div>
             </div>
             <div>
-              <div className="text-stone-500">{gameLabels.blackAccuracy}</div>
-              <div className="font-mono text-sm font-semibold tabular-nums text-stone-900">
+              <div className="text-stone-500 dark:text-stone-400">{gameLabels.blackAccuracy}</div>
+              <div className="font-mono text-sm font-semibold tabular-nums text-stone-900 dark:text-stone-100">
                 {analysis.black.accuracy}% ({gameLabels.acpl}: {analysis.black.acpl})
               </div>
             </div>
@@ -120,7 +120,7 @@ export function GameOverDialog({
         ) : null}
 
         {savedGameId ? (
-          <div className="mb-4 flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900">
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900 dark:border-teal-800 dark:bg-teal-950/50 dark:text-teal-200">
             <span>{gameLabels.savedLink}</span>
             {savedPersisted ? (
               <Link
@@ -131,7 +131,7 @@ export function GameOverDialog({
                 <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             ) : (
-              <span className="font-mono text-[11px] text-stone-600">local-only</span>
+              <span className="font-mono text-[11px] text-stone-600 dark:text-stone-400">local-only</span>
             )}
           </div>
         ) : null}
@@ -142,7 +142,7 @@ export function GameOverDialog({
               type="button"
               onClick={onAnalyze}
               disabled={analyzing}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
             >
               <BarChart2 className="h-3.5 w-3.5" />
               <span>{analyzing ? gameLabels.analyzing : gameLabels.analyzeButton}</span>
@@ -154,7 +154,7 @@ export function GameOverDialog({
               type="button"
               onClick={onSave}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700"
             >
               <Save className="h-3.5 w-3.5" />
               <span>{saving ? gameLabels.saving : gameLabels.saveGame}</span>
@@ -164,7 +164,7 @@ export function GameOverDialog({
           <button
             type="button"
             onClick={onRematch}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-4 py-2 text-xs font-medium text-white hover:bg-teal-800"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-4 py-2 text-xs font-medium text-white hover:bg-teal-800 dark:bg-teal-600 dark:hover:bg-teal-500"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span>{labels.rematch}</span>

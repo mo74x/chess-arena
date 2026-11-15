@@ -1,8 +1,47 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
 import type { SaveGameRequestInput } from '@/lib/arena/schemas';
 import { type GameResult, type GameTermination, replayPgn } from '@/lib/chess/engine';
 import { getServerEnv } from '@/lib/env';
+import { getModelSpecById, isRankedEligibleModel } from '@/lib/providers/models.config';
 import { getSupabaseServiceClient } from './server';
+
+export class HandleConflictError extends Error {
+  readonly status = 409;
+  constructor(handle: string) {
+    super(`Handle "${handle}" is already claimed by another player.`);
+    this.name = 'HandleConflictError';
+  }
+}
+
+export function hashPlayerToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+const NATURAL_TERMINATIONS = new Set<GameTermination>([
+  'checkmate',
+  'stalemate',
+  'insufficient_material',
+  'threefold_repetition',
+  'fifty_move_rule',
+]);
+
+export function computeIsRanked(
+  input: SaveGameRequestInput,
+  termination: GameTermination,
+): boolean {
+  if (input.mode !== 'pure') return false;
+  if (!isRankedEligibleModel(input.modelId)) return false;
+  if (!input.playerHandle || !input.playerToken) return false;
+
+  if (NATURAL_TERMINATIONS.has(termination)) {
+    return true;
+  }
+  if (termination === 'forfeit' && input.forfeitedBy !== input.humanColor) {
+    return input.moves.length >= 4;
+  }
+  return input.moves.length >= 6;
+}
 
 export interface PersistedGameSummary {
   id: string;
@@ -37,6 +76,21 @@ export interface ModelStatsRow {
   draws: number;
   model_losses: number;
   avg_illegal_attempts: number;
+}
+
+export interface PlayerScoreboardRow {
+  model: string;
+  mode: string;
+  player_token_hash: string;
+  player_handle: string;
+  player_avatar: string | null;
+  model_games_count: number;
+  games_played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  points: number;
+  last_played_at: string;
 }
 
 /**
@@ -85,9 +139,12 @@ export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
   id: string;
   result: GameResult;
   termination: GameTermination;
+  isRanked: boolean;
   persisted: boolean;
 }> {
   const outcome = deriveAuthoritativeOutcome(input);
+  const isRanked = computeIsRanked(input, outcome.termination);
+  const tokenHash = input.playerToken ? hashPlayerToken(input.playerToken) : null;
   const client = getSupabaseServiceClient();
 
   if (!client) {
@@ -95,8 +152,25 @@ export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
       id: crypto.randomUUID(),
       result: outcome.result,
       termination: outcome.termination,
+      isRanked,
       persisted: false,
     };
+  }
+
+  if (input.playerHandle && tokenHash) {
+    const { data: existingClaim, error: claimError } = await client
+      .from('games')
+      .select('id')
+      .ilike('player_handle', input.playerHandle)
+      .neq('player_token_hash', tokenHash)
+      .limit(1);
+
+    if (claimError) {
+      throw new Error(claimError.message);
+    }
+    if (existingClaim && existingClaim.length > 0) {
+      throw new HandleConflictError(input.playerHandle);
+    }
   }
 
   const { data: gameRow, error: gameError } = await client
@@ -111,6 +185,10 @@ export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
       illegal_attempts: input.illegalAttempts,
       fallback_moves: input.fallbackMoves,
       total_tokens: input.totalTokens,
+      player_handle: input.playerHandle ?? null,
+      player_avatar: input.playerAvatar ?? null,
+      player_token_hash: tokenHash,
+      is_ranked: isRanked,
     })
     .select('id')
     .single();
@@ -141,6 +219,7 @@ export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
     id: gameRow.id,
     result: outcome.result,
     termination: outcome.termination,
+    isRanked,
     persisted: true,
   };
 }
@@ -245,6 +324,52 @@ export async function getModelLeaderboard(mode?: string): Promise<{
 
   return {
     models: (data ?? []) as ModelStatsRow[],
+    configured: true,
+  };
+}
+
+export async function getPlayerScoreboard(options?: {
+  model?: string;
+  mode?: string;
+}): Promise<{
+  entries: PlayerScoreboardRow[];
+  configured: boolean;
+}> {
+  const client = getSupabaseServiceClient();
+  if (!client) {
+    return { entries: [], configured: false };
+  }
+
+  let query = client
+    .from('model_player_scoreboard')
+    .select('*')
+    .order('points', { ascending: false })
+    .order('wins', { ascending: false })
+    .order('games_played', { ascending: true })
+    .limit(200);
+
+  if (options?.mode) {
+    query = query.eq('mode', options.mode);
+  } else {
+    query = query.eq('mode', 'pure');
+  }
+  if (options?.model) {
+    query = query.eq('model', options.model);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  // Hide custom models with fewer than 3 ranked games to avoid typos cluttering the public table
+  const filtered = ((data ?? []) as PlayerScoreboardRow[]).filter((row) => {
+    const isPreset = Boolean(getModelSpecById(row.model));
+    return isPreset || row.model_games_count >= 3;
+  });
+
+  return {
+    entries: filtered,
     configured: true,
   };
 }

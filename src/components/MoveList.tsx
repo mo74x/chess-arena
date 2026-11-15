@@ -9,6 +9,7 @@ export interface MoveLogEntry {
   latencyMs?: number | null;
   illegalAttempts?: number;
   fallbackUsed?: boolean;
+  totalTokens?: number;
 }
 
 interface MoveListProps {
@@ -29,20 +30,20 @@ export function MoveList({ moves, title, activePly, onSelectPly }: MoveListProps
   }
 
   return (
-    <div className="rounded-lg border border-stone-200 bg-white p-3">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">{title}</h2>
+    <div className="rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-900">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">{title}</h2>
       <div
         dir="ltr"
         style={{ unicodeBidi: 'isolate' }}
         className="max-h-60 overflow-y-auto font-mono text-sm tabular-nums"
       >
         {pairs.length === 0 ? (
-          <p className="py-4 text-center font-sans text-xs text-stone-400">1. ...</p>
+          <p className="py-4 text-center font-sans text-xs text-stone-400 dark:text-stone-500">1. ...</p>
         ) : (
           <div className="space-y-1">
             {pairs.map((pair) => (
               <div key={pair.moveNumber} className="grid grid-cols-[2.2rem_1fr_1fr] items-center gap-1">
-                <span className="text-xs text-stone-400">{pair.moveNumber}.</span>
+                <span className="text-xs text-stone-400 dark:text-stone-500">{pair.moveNumber}.</span>
                 {[pair.white, pair.black].map((entry, idx) =>
                   entry ? (
                     <button
@@ -52,22 +53,35 @@ export function MoveList({ moves, title, activePly, onSelectPly }: MoveListProps
                       className={`flex items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors ${
                         activePly === entry.ply
                           ? 'bg-teal-700 text-white'
-                          : 'bg-stone-50 text-stone-800 hover:bg-stone-100'
+                          : 'bg-stone-50 text-stone-800 hover:bg-stone-100 dark:bg-stone-800/70 dark:text-stone-200 dark:hover:bg-stone-800'
                       }`}
                     >
                       <span>{entry.san}</span>
-                      {entry.illegalAttempts && entry.illegalAttempts > 0 ? (
-                        <span
-                          className={`ms-1 rounded px-1 text-[10px] ${
-                            activePly === entry.ply
-                              ? 'bg-amber-200 text-stone-900'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                          title={`Illegal attempts: ${entry.illegalAttempts}`}
-                        >
-                          !{entry.illegalAttempts}
-                        </span>
-                      ) : null}
+                      <span className="flex items-center gap-1">
+                        {entry.totalTokens && entry.totalTokens > 0 ? (
+                          <span
+                            className={`text-[10px] ${
+                              activePly === entry.ply
+                                ? 'text-teal-100'
+                                : 'text-stone-400 dark:text-stone-500'
+                            }`}
+                          >
+                            {entry.totalTokens}t
+                          </span>
+                        ) : null}
+                        {entry.illegalAttempts && entry.illegalAttempts > 0 ? (
+                          <span
+                            className={`rounded px-1 text-[10px] ${
+                              activePly === entry.ply
+                                ? 'bg-amber-200 text-stone-900'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
+                            }`}
+                            title={`Illegal attempts: ${entry.illegalAttempts}`}
+                          >
+                            !{entry.illegalAttempts}
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                   ) : (
                     <span key={`empty-${pair.moveNumber}-${idx}`} />

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetEnvCache } from '@/lib/env';
-import { getModelSpecById } from '@/lib/providers/models.config';
+import {
+  getModelSpecById,
+  isRankedEligibleModel,
+  resolveModelSpec,
+} from '@/lib/providers/models.config';
 import { MissingApiKeyError, resolveProviderApiKey } from '@/lib/providers/registry';
 import { buildMovePrompts, sanitizeProviderError } from '@/lib/providers/types';
 
@@ -59,5 +63,21 @@ describe('provider registry and error hygiene', () => {
     });
     expect(assistedPrompt.user).toContain('Engine top candidates: e4 (0.30)');
     expect(assistedPrompt.user).toContain('Legal moves');
+  });
+
+  it('resolves custom BYOK models and filters ranked-eligible models', () => {
+    const custom = resolveModelSpec('claude-opus-4-1-20250805', 'anthropic');
+    expect(custom).toMatchObject({
+      id: 'anthropic:claude-opus-4-1-20250805',
+      provider: 'anthropic',
+      apiModelId: 'claude-opus-4-1-20250805',
+      isCustom: true,
+    });
+
+    expect(resolveModelSpec('bad model with spaces!', 'openai')).toBeUndefined();
+    expect(resolveModelSpec('some-model', 'mock')).toBeUndefined();
+    expect(isRankedEligibleModel('mock-legal')).toBe(false);
+    expect(isRankedEligibleModel('stockfish')).toBe(false);
+    expect(isRankedEligibleModel('anthropic:claude-opus-4-1-20250805')).toBe(true);
   });
 });

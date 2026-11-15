@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import { checkRateLimit, extractClientIp } from '@/lib/arena/rate-limit';
 import { SaveGameRequestSchema } from '@/lib/arena/schemas';
-import { listGames, saveVerifiedGame } from '@/lib/supabase/games';
+import { HandleConflictError, listGames, saveVerifiedGame } from '@/lib/supabase/games';
 
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
@@ -26,6 +27,15 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const ip = extractClientIp(request.headers);
+  const limit = checkRateLimit(`games:${ip}`, 20, 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded for saving games. Try again shortly.' },
+      { status: 429 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -45,6 +55,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     const saved = await saveVerifiedGame(parsed.data);
     return NextResponse.json(saved, { status: 201 });
   } catch (err) {
+    if (err instanceof HandleConflictError) {
+      return NextResponse.json({ error: err.message, code: 'handle_taken' }, { status: 409 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to save game.' },
       { status: 400 },

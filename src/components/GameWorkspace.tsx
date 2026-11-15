@@ -26,6 +26,11 @@ import {
 import { detectOpening } from '@/lib/chess/openings';
 import { playChessSound } from '@/lib/chess/sound';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import {
+  getOrCreatePlayerIdentity,
+  type PlayerIdentity,
+  savePlayerIdentity,
+} from '@/lib/player/identity';
 import { ARENA_MODELS, ENGINE_SKILL_DEFAULT } from '@/lib/providers/models.config';
 import { ArenaSetup, type MatchConfig, type TimeControlOption } from './ArenaSetup';
 import { type BoardTheme, ChessBoardView } from './ChessBoardView';
@@ -33,6 +38,8 @@ import { EvalBar } from './EvalBar';
 import { type AnalysisSummary, GameOverDialog } from './GameOverDialog';
 import { LanguageToggle } from './LanguageToggle';
 import { MoveList, type MoveLogEntry } from './MoveList';
+import { PlayerAvatar } from './PlayerAvatar';
+import { ThemeToggle } from './ThemeToggle';
 
 const PIECE_GLYPHS: Record<string, string> = {
   q: 'Q',
@@ -71,8 +78,16 @@ export function GameWorkspace() {
     document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
   }, [locale]);
 
+  const [player, setPlayer] = useState<PlayerIdentity>(() => getOrCreatePlayerIdentity());
+  const handlePlayerChange = useCallback((next: PlayerIdentity) => {
+    setPlayer(next);
+    savePlayerIdentity(next);
+  }, []);
+
   const [config, setConfig] = useState<MatchConfig>({
+    provider: 'mock',
     modelId: 'mock-legal',
+    customModelId: '',
     humanColor: 'w',
     mode: 'pure',
     policy: 'strict',
@@ -112,6 +127,10 @@ export function GameWorkspace() {
   const [saving, setSaving] = useState(false);
   const [savedInfo, setSavedInfo] = useState<{ id: string; persisted: boolean } | null>(null);
   const [totalTokens, setTotalTokens] = useState(0);
+  const [tokenBreakdown, setTokenBreakdown] = useState<{ input: number; output: number }>({
+    input: 0,
+    output: 0,
+  });
 
   const requestInFlightRef = useRef(false);
 
@@ -119,6 +138,12 @@ export function GameWorkspace() {
     () => ARENA_MODELS.find((m) => m.id === config.modelId) ?? ARENA_MODELS[0]!,
     [config.modelId],
   );
+  const usingCustomModel = config.customModelId.trim().length > 0;
+  const activeModelId = usingCustomModel ? config.customModelId.trim() : config.modelId;
+  const canonicalModelId = usingCustomModel
+    ? `${config.provider}:${config.customModelId.trim()}`
+    : config.modelId;
+  const activeDisplayName = usingCustomModel ? config.customModelId.trim() : modelSpec.displayName;
 
   const chessInstance = useMemo(() => new Chess(fen), [fen]);
   const captured = useMemo(() => {
@@ -222,7 +247,8 @@ export function GameWorkspace() {
           headers,
           body: JSON.stringify({
             pgn: currentPgn,
-            modelId: config.modelId,
+            modelId: activeModelId,
+            provider: config.provider,
             mode: config.mode,
             policy: config.policy,
             skillLevel: config.mode === 'engine' ? config.skillLevel : undefined,
@@ -235,8 +261,15 @@ export function GameWorkspace() {
           return;
         }
 
-        if (data.telemetry?.usage?.totalTokens) {
-          setTotalTokens((prev) => prev + Number(data.telemetry.usage.totalTokens));
+        const moveTotalTokens = Number(data.telemetry?.usage?.totalTokens ?? 0);
+        const moveInputTokens = Number(data.telemetry?.usage?.inputTokens ?? 0);
+        const moveOutputTokens = Number(data.telemetry?.usage?.outputTokens ?? 0);
+        if (moveTotalTokens > 0) {
+          setTotalTokens((prev) => prev + moveTotalTokens);
+          setTokenBreakdown((prev) => ({
+            input: prev.input + moveInputTokens,
+            output: prev.output + moveOutputTokens,
+          }));
         }
         if (typeof data.evalCp === 'number' || typeof data.mate === 'number') {
           setEvalState({ evalCp: data.evalCp, mate: data.mate });
@@ -276,6 +309,7 @@ export function GameWorkspace() {
             latencyMs: data.telemetry?.latencyMs ?? null,
             illegalAttempts: data.telemetry?.illegalAttempts ?? 0,
             fallbackUsed: Boolean(data.telemetry?.fallbackUsed),
+            totalTokens: moveTotalTokens > 0 ? moveTotalTokens : undefined,
           };
           const nextMoves = [...currentMoves, entry];
           setMoves(nextMoves);
@@ -306,7 +340,7 @@ export function GameWorkspace() {
         setThinking(false);
       }
     },
-    [config, dict.game.modelUnavailable, soundEnabled],
+    [activeModelId, config, dict.game.modelUnavailable, soundEnabled],
   );
 
   const startNewGame = useCallback(() => {
@@ -322,6 +356,7 @@ export function GameWorkspace() {
     setAnalysis(null);
     setSavedInfo(null);
     setTotalTokens(0);
+    setTokenBreakdown({ input: 0, output: 0 });
     setDrawNotice(null);
     const clockCfg = getClockConfig(config.timeControl);
     setWhiteMs(clockCfg ? clockCfg.baseMs : null);
@@ -485,9 +520,13 @@ export function GameWorkspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pgn,
-          modelId: config.modelId,
+          modelId: canonicalModelId,
+          provider: config.provider,
           mode: config.mode,
           humanColor: config.humanColor,
+          playerHandle: player.handle.trim() || undefined,
+          playerAvatar: player.avatarId,
+          playerToken: player.playerToken || undefined,
           resignedBy: gameOverState.resignedBy,
           forfeitedBy: gameOverState.forfeitedBy,
           timedOutBy: gameOverState.timedOutBy,
@@ -506,9 +545,11 @@ export function GameWorkspace() {
           })),
         }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         setSavedInfo({ id: data.id, persisted: Boolean(data.persisted) });
+      } else if (data?.error) {
+        setErrorBanner(data.error);
       }
     } finally {
       setSaving(false);
@@ -518,35 +559,40 @@ export function GameWorkspace() {
   const isHumanTurn = !thinking && !gameOverState.over && chessInstance.turn() === config.humanColor;
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900">
-      <header className="border-b border-stone-200 bg-white">
+    <div className="min-h-screen bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
+      <header className="border-b border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
-            <Link href="/" className="text-base font-semibold tracking-tight text-stone-900">
+            <Link href="/" className="text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100">
               {dict.appName}
             </Link>
-            <nav className="flex items-center gap-4 text-sm text-stone-600">
-              <Link href="/" className="font-medium text-stone-900">
+            <nav className="flex items-center gap-4 text-sm text-stone-600 dark:text-stone-400">
+              <Link href="/" className="font-medium text-stone-900 dark:text-stone-100">
                 {dict.nav.play}
               </Link>
-              <Link href="/history" className="hover:text-stone-900">
+              <Link href="/history" className="hover:text-stone-900 dark:hover:text-stone-100">
                 {dict.nav.history}
               </Link>
-              <Link href="/models" className="hover:text-stone-900">
+              <Link href="/models" className="hover:text-stone-900 dark:hover:text-stone-100">
                 {dict.nav.models}
               </Link>
             </nav>
           </div>
-          <LanguageToggle locale={locale} label={dict.language.toggleLabel} onToggle={setLocale} />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageToggle locale={locale} label={dict.language.toggleLabel} onToggle={setLocale} />
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">
         {phase === 'setup' ? (
           <div className="space-y-4">
-            <p className="text-center text-sm text-stone-600">{dict.tagline}</p>
+            <p className="text-center text-sm text-stone-600 dark:text-stone-400">{dict.tagline}</p>
             <ArenaSetup
               config={config}
+              player={player}
+              onPlayerChange={handlePlayerChange}
               onChange={setConfig}
               onStart={startNewGame}
               labels={dict.setup}
@@ -561,21 +607,30 @@ export function GameWorkspace() {
                 label={dict.game.evalTitle}
               />
               <div className="w-full max-w-[540px] space-y-2">
-                <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs">
+                <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs dark:border-stone-800 dark:bg-stone-900">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-stone-900">{modelSpec.displayName}</span>
-                    <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-stone-600">
+                    <span className="font-semibold text-stone-900 dark:text-stone-100">{activeDisplayName}</span>
+                    <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-stone-600 dark:bg-stone-800 dark:text-stone-300">
                       {dict.setup.modes[config.mode].label}
                     </span>
+                    {totalTokens > 0 ? (
+                      <span
+                        data-testid="live-token-meter"
+                        title={`In: ${tokenBreakdown.input} / Out: ${tokenBreakdown.output}`}
+                        className="rounded bg-teal-50 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-teal-800 dark:bg-teal-950/60 dark:text-teal-300"
+                      >
+                        {totalTokens.toLocaleString()} {dict.game.tokensLabel}
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="flex items-center gap-2 font-mono text-stone-500">
+                  <div className="flex items-center gap-2 font-mono text-stone-500 dark:text-stone-400">
                     <span>
                       {(config.humanColor === 'w' ? captured.b : captured.w)
                         .map((p) => PIECE_GLYPHS[p])
                         .join(' ')}
                     </span>
                     {thinking ? (
-                      <span className="inline-flex items-center gap-1 font-sans text-teal-700">
+                      <span className="inline-flex items-center gap-1 font-sans text-teal-700 dark:text-teal-400">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         {dict.game.thinking}
                       </span>
@@ -583,7 +638,7 @@ export function GameWorkspace() {
                     {config.timeControl !== 'none' ? (
                       <span
                         data-testid="ai-clock"
-                        className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-stone-800"
+                        className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-stone-800 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
                       >
                         {formatClock((config.humanColor === 'w' ? blackMs : whiteMs) ?? 0)}
                       </span>
@@ -601,20 +656,23 @@ export function GameWorkspace() {
                   labels={dict.promotion}
                 />
 
-                <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs">
+                <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs dark:border-stone-800 dark:bg-stone-900">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-stone-900">{dict.game.you}</span>
+                    <PlayerAvatar avatarId={player.avatarId} size="sm" />
+                    <span className="font-semibold text-stone-900 dark:text-stone-100">
+                      {player.handle.trim() || dict.game.you}
+                    </span>
                     {opening ? (
                       <span
                         data-testid="opening-badge"
-                        className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600"
+                        className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600 dark:bg-stone-800 dark:text-stone-300"
                       >
                         {opening.eco} · {opening.name}
                       </span>
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-stone-500">
+                    <span className="font-mono text-stone-500 dark:text-stone-400">
                       {(config.humanColor === 'w' ? captured.w : captured.b)
                         .map((p) => PIECE_GLYPHS[p])
                         .join(' ')}
@@ -622,7 +680,7 @@ export function GameWorkspace() {
                     {config.timeControl !== 'none' ? (
                       <span
                         data-testid="human-clock"
-                        className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-stone-800"
+                        className="rounded border border-stone-200 bg-stone-50 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-stone-800 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
                       >
                         {formatClock((config.humanColor === 'w' ? whiteMs : blackMs) ?? 0)}
                       </span>
@@ -635,7 +693,7 @@ export function GameWorkspace() {
             <aside className="space-y-3">
               {errorBanner ? (
                 <div
-                  className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"
+                  className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-300"
                   role="alert"
                 >
                   <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -646,15 +704,15 @@ export function GameWorkspace() {
               {drawNotice ? (
                 <div
                   data-testid="draw-notice"
-                  className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"
+                  className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300"
                 >
                   {drawNotice}
                 </div>
               ) : null}
 
               {showComments && latestComment ? (
-                <div className="rounded-lg border border-stone-200 bg-white p-3 text-xs text-stone-700">
-                  <span className="font-semibold text-stone-900">{modelSpec.displayName}: </span>
+                <div className="rounded-lg border border-stone-200 bg-white p-3 text-xs text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300">
+                  <span className="font-semibold text-stone-900 dark:text-stone-100">{activeDisplayName}: </span>
                   <span>{latestComment}</span>
                 </div>
               ) : null}
@@ -667,7 +725,7 @@ export function GameWorkspace() {
                   onClick={handleResign}
                   disabled={gameOverState.over}
                   data-testid="resign-btn"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   <Flag className="h-3.5 w-3.5" />
                   <span>{dict.game.resign}</span>
@@ -677,7 +735,7 @@ export function GameWorkspace() {
                   onClick={handleOfferDraw}
                   disabled={thinking || gameOverState.over}
                   data-testid="offer-draw-btn"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   <Handshake className="h-3.5 w-3.5" />
                   <span>{dict.game.offerDraw}</span>
@@ -686,7 +744,7 @@ export function GameWorkspace() {
                   type="button"
                   onClick={() => setSoundEnabled((prev) => !prev)}
                   data-testid="sound-toggle-btn"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
                   <span>{soundEnabled ? dict.game.soundOn : dict.game.soundOff}</span>
@@ -696,7 +754,7 @@ export function GameWorkspace() {
                   value={boardTheme}
                   onChange={(e) => setBoardTheme(e.target.value as BoardTheme)}
                   data-testid="board-theme-select"
-                  className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-800"
+                  className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-800 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
                 >
                   {(['classic', 'slate', 'walnut'] as const).map((themeKey) => (
                     <option key={themeKey} value={themeKey}>
@@ -708,7 +766,7 @@ export function GameWorkspace() {
                   type="button"
                   onClick={handleTakeback}
                   disabled={thinking || gameOverState.over || moves.length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   <Undo2 className="h-3.5 w-3.5" />
                   <span>{dict.game.takeback}</span>
@@ -716,7 +774,7 @@ export function GameWorkspace() {
                 <button
                   type="button"
                   onClick={() => setShowComments((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   {showComments ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   <span>{showComments ? dict.game.hideComments : dict.game.showComments}</span>
@@ -725,7 +783,7 @@ export function GameWorkspace() {
                   type="button"
                   onClick={handleCopyPgn}
                   disabled={!pgn}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   <span>{copiedPgn ? dict.game.copiedPgn : dict.game.copyPgn}</span>
@@ -734,7 +792,7 @@ export function GameWorkspace() {
                   type="button"
                   onClick={handleDownloadPgn}
                   disabled={!pgn}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span>{dict.game.downloadPgn}</span>
@@ -742,7 +800,7 @@ export function GameWorkspace() {
                 <button
                   type="button"
                   onClick={() => setPhase('setup')}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
                 >
                   <PlusCircle className="h-3.5 w-3.5" />
                   <span>{dict.game.newGame}</span>

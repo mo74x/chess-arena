@@ -8,10 +8,11 @@ import {
 import { getServerEnv } from '@/lib/env';
 import {
   ENGINE_SKILL_DEFAULT,
-  getModelSpecById,
+  resolveModelSpec,
   type ArenaModelSpec,
   type GameMode,
   type IllegalMovePolicy,
+  type ProviderId,
 } from '@/lib/providers/models.config';
 import { getProviderAdapter, resolveProviderApiKey } from '@/lib/providers/registry';
 import {
@@ -26,6 +27,7 @@ import { LlmMoveJsonSchema } from './schemas';
 export interface ResolveAiMoveInput {
   pgn: string;
   modelId: string;
+  provider?: ProviderId;
   mode: GameMode;
   policy: IllegalMovePolicy;
   skillLevel?: number;
@@ -116,9 +118,9 @@ export async function resolveAiMove(
 ): Promise<ResolveAiMoveOutput> {
   const startedAt = Date.now();
   const env = getServerEnv();
-  const model = getModelSpecById(input.modelId);
+  const model = resolveModelSpec(input.modelId, input.provider);
   if (!model) {
-    throw new ArenaValidationError(`Unknown modelId: ${input.modelId}`, 400, 'unknown_model');
+    throw new ArenaValidationError(`Unknown or invalid modelId: ${input.modelId}`, 400, 'unknown_model');
   }
 
   let replayed;

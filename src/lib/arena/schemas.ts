@@ -4,10 +4,12 @@ import { ENGINE_SKILL_MAX, ENGINE_SKILL_MIN } from '@/lib/providers/models.confi
 export const GameModeSchema = z.enum(['pure', 'assisted', 'engine']);
 export const IllegalMovePolicySchema = z.enum(['strict', 'friendly']);
 export const PlayerColorSchema = z.enum(['w', 'b']);
+export const ProviderIdSchema = z.enum(['anthropic', 'google', 'openai', 'mock', 'engine']);
 
 export const MoveRequestSchema = z.object({
   pgn: z.string().max(16_384, 'PGN exceeds maximum allowed size.'),
-  modelId: z.string().min(1).max(64),
+  modelId: z.string().min(1).max(100),
+  provider: ProviderIdSchema.optional(),
   mode: GameModeSchema,
   policy: IllegalMovePolicySchema.default('strict'),
   skillLevel: z.number().int().min(ENGINE_SKILL_MIN).max(ENGINE_SKILL_MAX).optional(),
@@ -38,9 +40,19 @@ export const SaveMoveInputSchema = z.object({
 
 export const SaveGameRequestSchema = z.object({
   pgn: z.string().min(1).max(16_384),
-  modelId: z.string().min(1).max(64),
+  modelId: z.string().min(1).max(100),
+  provider: ProviderIdSchema.optional(),
   mode: GameModeSchema,
   humanColor: PlayerColorSchema,
+  playerHandle: z
+    .string()
+    .trim()
+    .min(3)
+    .max(24)
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Handle may only contain letters, numbers, underscores, and hyphens.')
+    .optional(),
+  playerAvatar: z.string().min(1).max(32).optional(),
+  playerToken: z.string().uuid().optional(),
   resignedBy: PlayerColorSchema.optional(),
   forfeitedBy: PlayerColorSchema.optional(),
   timedOutBy: PlayerColorSchema.optional(),

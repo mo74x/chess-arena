@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetEnvCache, validateProductionEnv } from '@/lib/env';
-import { deriveAuthoritativeOutcome } from '@/lib/supabase/games';
+import { computeIsRanked, deriveAuthoritativeOutcome } from '@/lib/supabase/games';
 
 describe('server PGN validation and env checks', () => {
   afterEach(() => {
@@ -89,5 +89,32 @@ describe('server PGN validation and env checks', () => {
     });
     expect(timeoutOutcome.result).toBe('0-1');
     expect(timeoutOutcome.termination).toBe('timeout');
+  });
+
+  it('evaluates ranked eligibility for pure LLM games, model forfeits, and mock/assisted exclusions', () => {
+    const baseMoves = [
+      { ply: 1, san: 'e4', fenAfter: 'f1', by: 'human' as const, illegalAttempts: 0 },
+      { ply: 2, san: 'e5', fenAfter: 'f2', by: 'model' as const, illegalAttempts: 0 },
+      { ply: 3, san: 'Nf3', fenAfter: 'f3', by: 'human' as const, illegalAttempts: 0 },
+      { ply: 4, san: 'Nc6', fenAfter: 'f4', by: 'model' as const, illegalAttempts: 0 },
+    ];
+    const baseInput = {
+      pgn: '1. e4 e5 2. Nf3 Nc6',
+      modelId: 'claude-sonnet',
+      mode: 'pure' as const,
+      humanColor: 'w' as const,
+      playerHandle: 'Mo74x',
+      playerToken: '11111111-1111-4111-8111-111111111111',
+      illegalAttempts: 0,
+      fallbackMoves: 0,
+      totalTokens: 100,
+      moves: baseMoves,
+    };
+
+    expect(computeIsRanked(baseInput, 'checkmate')).toBe(true);
+    expect(computeIsRanked({ ...baseInput, forfeitedBy: 'b' }, 'forfeit')).toBe(true);
+    expect(computeIsRanked({ ...baseInput, resignedBy: 'w' }, 'resign')).toBe(false);
+    expect(computeIsRanked({ ...baseInput, mode: 'assisted' }, 'checkmate')).toBe(false);
+    expect(computeIsRanked({ ...baseInput, modelId: 'mock-legal' }, 'checkmate')).toBe(false);
   });
 });

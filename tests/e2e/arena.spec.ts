@@ -88,4 +88,23 @@ test.describe('Chess Arena E2E', () => {
 
     await page.screenshot({ path: 'docs/screenshots/game-en.png', fullPage: true });
   });
+
+  test('defaults to dark mode, toggles light mode, and supports handle, avatar, and custom model input', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    await page.getByTestId('theme-toggle').click();
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+
+    await page.getByTestId('theme-toggle').click();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    await page.getByTestId('player-handle-input').fill('Mo74x');
+    await page.getByTestId('avatar-king').click();
+    await page.getByTestId('custom-provider-select').selectOption('anthropic');
+    await page.getByTestId('custom-model-input').fill('claude-opus-4-1-20250805');
+    await expect(page.getByTestId('byok-key-input')).toBeVisible();
+  });
 });
