@@ -1,9 +1,19 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
+import {
+  hashReceipt,
+  type MoveReceiptPayload,
+  verifyMoveReceipt,
+  verifyPgnProgression,
+} from '@/lib/arena/receipt';
 import type { SaveGameRequestInput } from '@/lib/arena/schemas';
 import { type GameResult, type GameTermination, replayPgn } from '@/lib/chess/engine';
 import { getServerEnv } from '@/lib/env';
-import { getModelSpecById, isRankedEligibleModel } from '@/lib/providers/models.config';
+import {
+  getModelSpecById,
+  isRankedEligibleModel,
+  resolveModelSpec,
+} from '@/lib/providers/models.config';
 import { getSupabaseServiceClient } from './server';
 
 export class HandleConflictError extends Error {
@@ -11,6 +21,22 @@ export class HandleConflictError extends Error {
   constructor(handle: string) {
     super(`Handle "${handle}" is already claimed by another player.`);
     this.name = 'HandleConflictError';
+  }
+}
+
+export class InvalidReceiptError extends Error {
+  readonly status = 403;
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidReceiptError';
+  }
+}
+
+export class DuplicateGameError extends Error {
+  readonly status = 409;
+  constructor() {
+    super('This game has already been saved.');
+    this.name = 'DuplicateGameError';
   }
 }
 
@@ -29,18 +55,24 @@ const NATURAL_TERMINATIONS = new Set<GameTermination>([
 export function computeIsRanked(
   input: SaveGameRequestInput,
   termination: GameTermination,
+  verifiedReceipt?: MoveReceiptPayload | null,
 ): boolean {
   if (input.mode !== 'pure') return false;
   if (!isRankedEligibleModel(input.modelId)) return false;
   if (!input.playerHandle || !input.playerToken) return false;
+  if (input.usedTakeback || input.timedOutBy || input.drawAgreed) return false;
+  if (!verifiedReceipt || !verifiedReceipt.verifiedFromStart) return false;
 
   if (NATURAL_TERMINATIONS.has(termination)) {
     return true;
   }
-  if (termination === 'forfeit' && input.forfeitedBy !== input.humanColor) {
+  if (termination === 'forfeit' && verifiedReceipt.forfeitedBy !== input.humanColor) {
     return input.moves.length >= 4;
   }
-  return input.moves.length >= 6;
+  if (termination === 'resign' && input.resignedBy === input.humanColor) {
+    return input.moves.length >= 6;
+  }
+  return false;
 }
 
 export interface PersistedGameSummary {
@@ -114,6 +146,9 @@ export function deriveAuthoritativeOutcome(input: SaveGameRequestInput): {
   }
 
   if (input.resignedBy) {
+    if (input.resignedBy !== input.humanColor) {
+      throw new Error('Only the human player may resign on their own behalf.');
+    }
     const result: GameResult = input.resignedBy === 'w' ? '0-1' : '1-0';
     return { pgn: replayed.pgn, result, termination: 'resign' };
   }
@@ -135,6 +170,40 @@ export function deriveAuthoritativeOutcome(input: SaveGameRequestInput): {
   throw new Error('Cannot save an unfinished game without resignation or forfeit.');
 }
 
+export function verifySubmittedReceipt(
+  input: SaveGameRequestInput,
+  canonicalPgn: string,
+): MoveReceiptPayload | null {
+  if (!input.moveReceipt) {
+    return null;
+  }
+
+  const receipt = verifyMoveReceipt(input.moveReceipt);
+  if (!receipt) {
+    throw new InvalidReceiptError('Invalid move receipt signature.');
+  }
+
+  if (input.gameSessionId && receipt.gameSessionId !== input.gameSessionId) {
+    throw new InvalidReceiptError('Move receipt session mismatch.');
+  }
+
+  const expectedModelId =
+    resolveModelSpec(input.modelId, input.provider)?.id ?? input.modelId;
+  if (receipt.modelId !== expectedModelId || receipt.mode !== input.mode) {
+    throw new InvalidReceiptError('Move receipt model or mode mismatch.');
+  }
+
+  const prog = verifyPgnProgression(receipt.pgn, canonicalPgn);
+  if (!prog.valid) {
+    throw new InvalidReceiptError('Submitted PGN does not match move receipt.');
+  }
+  if (prog.deltaPlies === 1 && prog.baseTurn !== input.humanColor) {
+    throw new InvalidReceiptError('Trailing ply in submitted PGN was not played by human.');
+  }
+
+  return receipt;
+}
+
 export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
   id: string;
   result: GameResult;
@@ -143,8 +212,30 @@ export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
   persisted: boolean;
 }> {
   const outcome = deriveAuthoritativeOutcome(input);
-  const isRanked = computeIsRanked(input, outcome.termination);
+  const verifiedReceipt = verifySubmittedReceipt(input, outcome.pgn);
+
+  if (
+    outcome.termination === 'forfeit' &&
+    verifiedReceipt &&
+    verifiedReceipt.forfeitedBy !== input.forfeitedBy
+  ) {
+    throw new InvalidReceiptError('Forfeit claim does not match signed move receipt.');
+  }
+
+  const effectiveIllegalAttempts = verifiedReceipt
+    ? verifiedReceipt.illegalAttempts
+    : input.illegalAttempts;
+  const effectiveFallbackMoves = verifiedReceipt
+    ? verifiedReceipt.fallbackMoves
+    : input.fallbackMoves;
+  const effectiveTotalTokens = verifiedReceipt
+    ? verifiedReceipt.totalTokens
+    : input.totalTokens;
+
+  const isRanked = computeIsRanked(input, outcome.termination, verifiedReceipt);
   const tokenHash = input.playerToken ? hashPlayerToken(input.playerToken) : null;
+  const sessionIdToPersist = verifiedReceipt?.gameSessionId ?? input.gameSessionId ?? null;
+  const receiptHashToPersist = input.moveReceipt ? hashReceipt(input.moveReceipt) : null;
   const client = getSupabaseServiceClient();
 
   if (!client) {
@@ -182,18 +273,23 @@ export async function saveVerifiedGame(input: SaveGameRequestInput): Promise<{
       result: outcome.result,
       termination: outcome.termination,
       pgn: outcome.pgn,
-      illegal_attempts: input.illegalAttempts,
-      fallback_moves: input.fallbackMoves,
-      total_tokens: input.totalTokens,
+      illegal_attempts: effectiveIllegalAttempts,
+      fallback_moves: effectiveFallbackMoves,
+      total_tokens: effectiveTotalTokens,
       player_handle: input.playerHandle ?? null,
       player_avatar: input.playerAvatar ?? null,
       player_token_hash: tokenHash,
       is_ranked: isRanked,
+      game_session_id: sessionIdToPersist,
+      receipt_hash: receiptHashToPersist,
     })
     .select('id')
     .single();
 
   if (gameError || !gameRow) {
+    if (gameError?.code === '23505') {
+      throw new DuplicateGameError();
+    }
     throw new Error(gameError?.message ?? 'Failed to insert game.');
   }
 

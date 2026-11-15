@@ -13,6 +13,8 @@ export const MoveRequestSchema = z.object({
   mode: GameModeSchema,
   policy: IllegalMovePolicySchema.default('strict'),
   skillLevel: z.number().int().min(ENGINE_SKILL_MIN).max(ENGINE_SKILL_MAX).optional(),
+  gameSessionId: z.string().uuid().optional(),
+  prevReceipt: z.string().max(32_768).optional(),
 });
 
 export type MoveRequestInput = z.infer<typeof MoveRequestSchema>;
@@ -57,6 +59,9 @@ export const SaveGameRequestSchema = z.object({
   forfeitedBy: PlayerColorSchema.optional(),
   timedOutBy: PlayerColorSchema.optional(),
   drawAgreed: z.boolean().optional(),
+  usedTakeback: z.boolean().optional(),
+  gameSessionId: z.string().uuid().optional(),
+  moveReceipt: z.string().max(32_768).optional(),
   illegalAttempts: z.number().int().min(0).default(0),
   fallbackMoves: z.number().int().min(0).default(0),
   totalTokens: z.number().int().min(0).default(0),

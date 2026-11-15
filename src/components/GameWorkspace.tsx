@@ -133,6 +133,9 @@ export function GameWorkspace() {
   });
 
   const requestInFlightRef = useRef(false);
+  const gameSessionIdRef = useRef<string>('');
+  const moveReceiptRef = useRef<string | null>(null);
+  const [usedTakeback, setUsedTakeback] = useState(false);
 
   const modelSpec = useMemo(
     () => ARENA_MODELS.find((m) => m.id === config.modelId) ?? ARENA_MODELS[0]!,
@@ -252,6 +255,8 @@ export function GameWorkspace() {
             mode: config.mode,
             policy: config.policy,
             skillLevel: config.mode === 'engine' ? config.skillLevel : undefined,
+            gameSessionId: gameSessionIdRef.current || undefined,
+            prevReceipt: moveReceiptRef.current ?? undefined,
           }),
         });
 
@@ -259,6 +264,10 @@ export function GameWorkspace() {
         if (!res.ok) {
           setErrorBanner(data.error || dict.game.modelUnavailable);
           return;
+        }
+
+        if (typeof data.receipt === 'string') {
+          moveReceiptRef.current = data.receipt;
         }
 
         const moveTotalTokens = Number(data.telemetry?.usage?.totalTokens ?? 0);
@@ -358,6 +367,9 @@ export function GameWorkspace() {
     setTotalTokens(0);
     setTokenBreakdown({ input: 0, output: 0 });
     setDrawNotice(null);
+    gameSessionIdRef.current = crypto.randomUUID();
+    moveReceiptRef.current = null;
+    setUsedTakeback(false);
     const clockCfg = getClockConfig(config.timeControl);
     setWhiteMs(clockCfg ? clockCfg.baseMs : null);
     setBlackMs(clockCfg ? clockCfg.baseMs : null);
@@ -471,6 +483,8 @@ export function GameWorkspace() {
     setFen(replay.fen());
     setPgn(replay.pgn());
     setLastMoveSquares(null);
+    setUsedTakeback(true);
+    moveReceiptRef.current = null;
   };
 
   const handleCopyPgn = async () => {
@@ -531,6 +545,9 @@ export function GameWorkspace() {
           forfeitedBy: gameOverState.forfeitedBy,
           timedOutBy: gameOverState.timedOutBy,
           drawAgreed: gameOverState.drawAgreed,
+          usedTakeback,
+          gameSessionId: gameSessionIdRef.current || undefined,
+          moveReceipt: moveReceiptRef.current ?? undefined,
           illegalAttempts: totalIllegalAttempts,
           fallbackMoves: totalFallbackMoves,
           totalTokens,

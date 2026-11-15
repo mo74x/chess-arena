@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit, extractClientIp } from '@/lib/arena/rate-limit';
 import { SaveGameRequestSchema } from '@/lib/arena/schemas';
-import { HandleConflictError, listGames, saveVerifiedGame } from '@/lib/supabase/games';
+import {
+  DuplicateGameError,
+  HandleConflictError,
+  InvalidReceiptError,
+  listGames,
+  saveVerifiedGame,
+} from '@/lib/supabase/games';
 
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
@@ -28,11 +34,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
 export async function POST(request: Request): Promise<NextResponse> {
   const ip = extractClientIp(request.headers);
-  const limit = checkRateLimit(`games:${ip}`, 20, 60_000);
+  const limit = checkRateLimit(`games:${ip}`, 20);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded for saving games. Try again shortly.' },
-      { status: 429 },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSec) } },
     );
   }
 
@@ -57,6 +63,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch (err) {
     if (err instanceof HandleConflictError) {
       return NextResponse.json({ error: err.message, code: 'handle_taken' }, { status: 409 });
+    }
+    if (err instanceof DuplicateGameError) {
+      return NextResponse.json({ error: err.message, code: 'duplicate_game' }, { status: 409 });
+    }
+    if (err instanceof InvalidReceiptError) {
+      return NextResponse.json({ error: err.message, code: 'invalid_receipt' }, { status: 403 });
     }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to save game.' },

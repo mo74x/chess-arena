@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetEnvCache, validateProductionEnv } from '@/lib/env';
 import { computeIsRanked, deriveAuthoritativeOutcome } from '@/lib/supabase/games';
+import type { MoveReceiptPayload } from '@/lib/arena/receipt';
 
 describe('server PGN validation and env checks', () => {
   afterEach(() => {
@@ -111,10 +112,36 @@ describe('server PGN validation and env checks', () => {
       moves: baseMoves,
     };
 
-    expect(computeIsRanked(baseInput, 'checkmate')).toBe(true);
-    expect(computeIsRanked({ ...baseInput, forfeitedBy: 'b' }, 'forfeit')).toBe(true);
-    expect(computeIsRanked({ ...baseInput, resignedBy: 'w' }, 'resign')).toBe(false);
-    expect(computeIsRanked({ ...baseInput, mode: 'assisted' }, 'checkmate')).toBe(false);
-    expect(computeIsRanked({ ...baseInput, modelId: 'mock-legal' }, 'checkmate')).toBe(false);
+    const validReceipt: MoveReceiptPayload = {
+      v: 1,
+      gameSessionId: '22222222-2222-4222-8222-222222222222',
+      pgn: '1. e4 e5 2. Nf3 Nc6',
+      ply: 4,
+      modelId: 'claude-sonnet',
+      mode: 'pure',
+      policy: 'strict',
+      illegalAttempts: 0,
+      fallbackMoves: 0,
+      totalTokens: 100,
+      forfeitedBy: null,
+      verifiedFromStart: true,
+      issuedAt: Date.now(),
+    };
+
+    expect(computeIsRanked(baseInput, 'checkmate', validReceipt)).toBe(true);
+    expect(
+      computeIsRanked(
+        { ...baseInput, forfeitedBy: 'b' },
+        'forfeit',
+        { ...validReceipt, forfeitedBy: 'b' },
+      ),
+    ).toBe(true);
+    expect(computeIsRanked({ ...baseInput, resignedBy: 'w' }, 'resign', validReceipt)).toBe(false);
+    expect(computeIsRanked({ ...baseInput, usedTakeback: true }, 'checkmate', validReceipt)).toBe(false);
+    expect(computeIsRanked({ ...baseInput, timedOutBy: 'b' }, 'timeout', validReceipt)).toBe(false);
+    expect(computeIsRanked({ ...baseInput, drawAgreed: true }, 'draw_agreement', validReceipt)).toBe(false);
+    expect(computeIsRanked(baseInput, 'checkmate', { ...validReceipt, verifiedFromStart: false })).toBe(false);
+    expect(computeIsRanked({ ...baseInput, mode: 'assisted' }, 'checkmate', validReceipt)).toBe(false);
+    expect(computeIsRanked({ ...baseInput, modelId: 'mock-legal' }, 'checkmate', validReceipt)).toBe(false);
   });
 });

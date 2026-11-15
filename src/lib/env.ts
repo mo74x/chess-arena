@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 
 const ServerEnvSchema = z.object({
@@ -16,6 +17,10 @@ const ServerEnvSchema = z.object({
 
   // Stockfish binary override (optional; defaults to bundled stockfish npm package)
   STOCKFISH_PATH: z.string().optional(),
+
+  // Scoreboard integrity & proxy headers
+  ARENA_SIGNING_SECRET: z.string().optional(),
+  TRUSTED_PROXY_HEADERS: z.string().optional(),
 
   // Cost & abuse guardrails
   MOVE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(25000),
@@ -77,6 +82,10 @@ export function validateProductionEnv(): EnvValidationReport {
       warnings.push('Supabase persistence is disabled (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing).');
     }
 
+    if (env.NODE_ENV === 'production' && !env.ARENA_SIGNING_SECRET?.trim()) {
+      warnings.push('ARENA_SIGNING_SECRET is missing; ranked scoreboard receipts are disabled.');
+    }
+
     return { ok: missing.length === 0, missing, warnings };
   } catch (error) {
     return {
@@ -103,4 +112,28 @@ export function isProviderConfigured(
     case 'openai':
       return Boolean(env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim().length > 0);
   }
+}
+
+const globalForSecret = globalThis as typeof globalThis & {
+  __arenaEphemeralSigningSecret?: string;
+};
+
+/**
+ * Returns the HMAC signing secret for move receipts.
+ * Fails closed (`null`) in production if `ARENA_SIGNING_SECRET` is unset;
+ * uses a shared process-wide ephemeral secret in dev/test.
+ */
+export function getSigningSecret(): string | null {
+  const env = getServerEnv();
+  const configured = env.ARENA_SIGNING_SECRET?.trim();
+  if (configured) {
+    return configured;
+  }
+  if (env.NODE_ENV === 'production') {
+    return null;
+  }
+  if (!globalForSecret.__arenaEphemeralSigningSecret) {
+    globalForSecret.__arenaEphemeralSigningSecret = randomBytes(32).toString('hex');
+  }
+  return globalForSecret.__arenaEphemeralSigningSecret;
 }
