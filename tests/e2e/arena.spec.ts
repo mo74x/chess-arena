@@ -87,6 +87,14 @@ test.describe('Chess Arena E2E', () => {
     await expect(page.getByTestId('draw-notice')).toBeVisible();
 
     await page.screenshot({ path: 'docs/screenshots/game-en.png', fullPage: true });
+
+    await page.goto('/models');
+    await expect(page.locator('h1')).toBeVisible();
+    await page.screenshot({ path: 'docs/screenshots/models.png', fullPage: true });
+
+    await page.goto('/history');
+    await expect(page.locator('h1')).toBeVisible();
+    await page.screenshot({ path: 'docs/screenshots/history.png', fullPage: true });
   });
 
   test('defaults to dark mode, toggles light mode, and supports handle, avatar, and custom model input', async ({
