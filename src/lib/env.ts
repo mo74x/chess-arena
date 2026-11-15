@@ -15,8 +15,9 @@ const ServerEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 
-  // Stockfish binary override (optional; defaults to bundled stockfish npm package)
+  // Stockfish binary override & worker pool (optional; defaults to bundled stockfish npm package)
   STOCKFISH_PATH: z.string().optional(),
+  STOCKFISH_POOL_SIZE: z.coerce.number().int().min(1).max(4).default(2),
 
   // Scoreboard integrity & proxy headers
   ARENA_SIGNING_SECRET: z.string().optional(),

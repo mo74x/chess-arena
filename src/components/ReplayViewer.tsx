@@ -41,7 +41,7 @@ export function ReplayViewer({ moves, orientation }: ReplayViewerProps) {
             onClick={() => setPly(0)}
             disabled={ply === 0}
             aria-label={en.replay.start}
-            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
           >
             <ChevronFirst className="h-4 w-4" />
           </button>
@@ -50,11 +50,11 @@ export function ReplayViewer({ moves, orientation }: ReplayViewerProps) {
             onClick={() => setPly((p) => Math.max(0, p - 1))}
             disabled={ply === 0}
             aria-label={en.replay.prev}
-            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="min-w-[4.5rem] text-center font-mono text-xs tabular-nums text-stone-600">
+          <span className="min-w-[4.5rem] text-center font-mono text-xs tabular-nums text-stone-600 dark:text-stone-400">
             {ply} / {moves.length}
           </span>
           <button
@@ -62,7 +62,7 @@ export function ReplayViewer({ moves, orientation }: ReplayViewerProps) {
             onClick={() => setPly((p) => Math.min(moves.length, p + 1))}
             disabled={ply === moves.length}
             aria-label={en.replay.next}
-            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -71,7 +71,7 @@ export function ReplayViewer({ moves, orientation }: ReplayViewerProps) {
             onClick={() => setPly(moves.length)}
             disabled={ply === moves.length}
             aria-label={en.replay.end}
-            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+            className="rounded-md border border-stone-300 bg-white p-2 text-stone-700 hover:bg-stone-50 disabled:opacity-40 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800"
           >
             <ChevronLast className="h-4 w-4" />
           </button>
@@ -80,7 +80,7 @@ export function ReplayViewer({ moves, orientation }: ReplayViewerProps) {
 
       <div className="space-y-3">
         {activeComment ? (
-          <div className="rounded-lg border border-stone-200 bg-white p-3 text-xs text-stone-700">
+          <div className="rounded-lg border border-stone-200 bg-white p-3 text-xs text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300">
             {activeComment}
           </div>
         ) : null}

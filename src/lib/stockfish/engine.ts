@@ -168,6 +168,11 @@ class UciWorker {
   private queue: Promise<void> = Promise.resolve();
   private lineListeners = new Set<(line: string) => void>();
   private ready = false;
+  private pendingCount = 0;
+
+  get load(): number {
+    return this.pendingCount;
+  }
 
   private ensureProcess(): void {
     if (this.proc && !this.proc.killed && this.proc.exitCode === null) {
@@ -262,17 +267,22 @@ class UciWorker {
       exec: (cmd: string, until: (line: string) => boolean, timeoutMs: number) => Promise<string[]>;
     }) => Promise<T>,
   ): Promise<T> {
+    this.pendingCount += 1;
     const runTask = async (): Promise<T> => {
-      await this.ensureReady();
-      const send = (cmd: string) => {
-        this.sendRaw(cmd);
-      };
-      const exec = async (cmd: string, until: (line: string) => boolean, timeoutMs: number) => {
-        const waiter = this.waitForLine(until, timeoutMs);
-        this.sendRaw(cmd);
-        return waiter;
-      };
-      return task({ send, exec });
+      try {
+        await this.ensureReady();
+        const send = (cmd: string) => {
+          this.sendRaw(cmd);
+        };
+        const exec = async (cmd: string, until: (line: string) => boolean, timeoutMs: number) => {
+          const waiter = this.waitForLine(until, timeoutMs);
+          this.sendRaw(cmd);
+          return waiter;
+        };
+        return await task({ send, exec });
+      } finally {
+        this.pendingCount = Math.max(0, this.pendingCount - 1);
+      }
     };
 
     const next = this.queue.then(runTask, runTask);
@@ -288,8 +298,51 @@ class UciWorker {
   }
 }
 
-// Separate workers prevent batch /api/analyze from blocking live /api/move turns.
-const fastMoveWorker = new UciWorker();
+/**
+ * Bounded pool of UCI workers that routes each request to the least-loaded worker
+ * so concurrent live /api/move calls do not serialize behind a single process.
+ */
+class UciWorkerPool {
+  private workers: UciWorker[] = [];
+
+  private ensureWorkers(): UciWorker[] {
+    const targetSize = getServerEnv().STOCKFISH_POOL_SIZE;
+    while (this.workers.length < targetSize) {
+      this.workers.push(new UciWorker());
+    }
+    return this.workers;
+  }
+
+  private pickWorker(): UciWorker {
+    const pool = this.ensureWorkers();
+    let best = pool[0]!;
+    for (let i = 1; i < pool.length; i += 1) {
+      if (pool[i]!.load < best.load) {
+        best = pool[i]!;
+      }
+    }
+    return best;
+  }
+
+  run<T>(
+    task: (helpers: {
+      send: (cmd: string) => void;
+      exec: (cmd: string, until: (line: string) => boolean, timeoutMs: number) => Promise<string[]>;
+    }) => Promise<T>,
+  ): Promise<T> {
+    return this.pickWorker().run(task);
+  }
+
+  dispose(): void {
+    for (const worker of this.workers) {
+      worker.dispose();
+    }
+    this.workers = [];
+  }
+}
+
+// Pooled fast workers handle concurrent live /api/move turns; batchAnalysisWorker stays isolated for /api/analyze.
+const fastMoveWorker = new UciWorkerPool();
 const batchAnalysisWorker = new UciWorker();
 
 export async function checkStockfishHealth(): Promise<boolean> {

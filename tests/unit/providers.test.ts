@@ -5,6 +5,7 @@ import {
   isRankedEligibleModel,
   resolveModelSpec,
 } from '@/lib/providers/models.config';
+import { isOpenAIReasoningModel } from '@/lib/providers/openai';
 import { MissingApiKeyError, resolveProviderApiKey } from '@/lib/providers/registry';
 import { buildMovePrompts, sanitizeProviderError } from '@/lib/providers/types';
 
@@ -79,5 +80,15 @@ describe('provider registry and error hygiene', () => {
     expect(isRankedEligibleModel('mock-legal')).toBe(false);
     expect(isRankedEligibleModel('stockfish')).toBe(false);
     expect(isRankedEligibleModel('anthropic:claude-opus-4-1-20250805')).toBe(true);
+  });
+
+  it('identifies OpenAI reasoning models requiring max_completion_tokens', () => {
+    expect(isOpenAIReasoningModel('o1')).toBe(true);
+    expect(isOpenAIReasoningModel('o3-mini')).toBe(true);
+    expect(isOpenAIReasoningModel('o4-mini-2025-04-16')).toBe(true);
+    expect(isOpenAIReasoningModel('gpt-5')).toBe(true);
+    expect(isOpenAIReasoningModel('gpt-5-mini')).toBe(true);
+    expect(isOpenAIReasoningModel('gpt-4o-mini')).toBe(false);
+    expect(isOpenAIReasoningModel('gpt-4.1')).toBe(false);
   });
 });
